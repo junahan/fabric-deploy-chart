@@ -1,0 +1,112 @@
+{{- if .Values.channel.enabled }}
+apiVersion: batch/v1
+kind: Job 
+metadata:
+  name: {{ include "fabric-deploy-flow.fullname" . }}-channel-job
+  annotations:
+    "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": "before-hook-creation"
+spec:
+  template:
+    metadata:
+      name: {{ include "fabric-deploy-flow.fullname" . }}-channel-job
+    spec:
+      restartPolicy: OnFailure
+      volumes:
+        - name: kubeconfig
+          hostPath:
+            path: {{ $.Values.dependencies.kubeConfig }}
+            type: Directory
+        - name: script-api
+          configMap:
+            name: {{ include "fabric-deploy-flow.fullname" . }}-script-api
+        - name: script-utils
+          configMap:
+            name: {{ include "fabric-deploy-flow.fullname" . }}-script-utils
+        - name: script-cmd
+          configMap:
+            name: {{ include "fabric-deploy-flow.fullname" . }}-script-cmd
+        - name: configtx
+          configMap:
+            name: {{ include "fabric-deploy-flow.fullname" . }}-{{ .Values.consortium.name }}-configtx
+        - name: data-share
+          emptyDir: {}
+        - name: chaincode-store
+          hostPath:
+            path: /root/k8s/script/chaincode
+            type: Directory
+      initContainers:
+        - name: create-channel
+          image: {{ .Values.dependencies.tools.image }}
+          imagePullPolicy: IfNotPresent
+          command: 
+            - sh 
+            - -c
+            - |
+              sh /script/tools.sh create channel --peerOrgs ${PEER_ORGS} --ordererOrgs ${ORDERER_ORGS} --channelID ${CHANNEL_ID} --configPath /config --baseDir /tmp/crypto --log debug  
+          env:
+            - name: PEER_ORGS
+              value: {{ include "fabric-deploy-flow.consortium.peerOrgs" . }}
+            - name: ORDERER_ORGS
+              value: {{ include "fabric-deploy-flow.consortium.ordererOrgs" . }}
+            - name: CHANNEL_ID
+              value: "mychannel"
+            - name: GLOBAL_CONSORTIUM_NAME
+              value: {{ .Values.consortium.name }} 
+            - name: GLOBAL_AFFILIATION
+              value: "svc.cluster.local"
+            - name: FABRIC_CFG_PATH
+              value: /config
+          volumeMounts: 
+            - name: configtx
+              mountPath: /config
+            - name: script-api
+              mountPath: /script/api
+            - name: script-utils
+              mountPath: /script/utils
+            - name: script-cmd
+              mountPath: /script
+            - name: kubeconfig
+              mountPath: /root/.kube
+            - name: data-share
+              mountPath: /tmp/crypto
+      containers:
+        - name: channel-init
+          image: {{ .Values.dependencies.tools.image }}
+          imagePullPolicy: IfNotPresent
+          command: 
+          - sh 
+          - -c
+          - |
+            sh /script/tools.sh install channel --peerOrgs ${PEER_ORGS} --ordererOrgs ${ORDERER_ORGS} --channelID ${CHANNEL_ID} --targetOrderer ${ORDERER_TARGET_HOST} --joinAll
+          env:
+            - name: PEER_ORGS
+              value: {{ include "fabric-deploy-flow.consortium.peerOrgs" . | quote }}
+            - name: ORDERER_ORGS
+              value: {{ include "fabric-deploy-flow.consortium.ordererOrgs" . | quote }}
+            - name: CHANNEL_ID
+              value: {{ .Values.channel.name }}
+            - name: GLOBAL_CONSORTIUM_NAME
+              value: {{ .Values.consortium.name }} 
+            - name: GLOBAL_AFFILIATION
+              value: svc.cluster.local
+            - name: ORDERER_TARGET_HOST
+              value: {{ include "fabric-deploy-flow.target.orderer" . }}:7050
+            - name: FABRIC_CFG_PATH
+              value: /etc/hyperledger/fabric
+          volumeMounts:
+            - name: data-share
+              mountPath: /opt/data/crypto
+            - name: script-api
+              mountPath: /script/api
+            - name: script-utils
+              mountPath: /script/utils
+            - name: script-cmd
+              mountPath: /script
+            - name: kubeconfig
+              mountPath: /root/.kube
+            - name: chaincode-store
+              mountPath: /opt/gopath/src/github.com/chaincode 
+
+{{- end }}

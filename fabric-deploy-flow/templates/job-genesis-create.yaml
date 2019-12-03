@@ -1,0 +1,64 @@
+{{- if .Values.consortium.recreated }}
+apiVersion: batch/v1
+kind: Job 
+metadata:
+  name: {{ include "fabric-deploy-flow.fullname" . }}-genesis-job
+  annotations:
+    "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": "before-hook-creation"
+spec:
+  template:
+    metadata:
+      name: {{ include "fabric-deploy-flow.fullname" . }}-genesis-job
+    spec:
+      restartPolicy: OnFailure
+      volumes:
+        - name: kubeconfig
+          hostPath:
+            path: {{ .Values.dependencies.kubeConfig }}
+            type: Directory
+        - name: script-api
+          configMap:
+            name: {{ include "fabric-deploy-flow.fullname" . }}-script-api
+        - name: script-utils
+          configMap:
+            name: {{ include "fabric-deploy-flow.fullname" . }}-script-utils
+        - name: script-cmd
+          configMap:
+            name: {{ include "fabric-deploy-flow.fullname" . }}-script-cmd
+        - name: configtx
+          configMap:
+            name: {{ include "fabric-deploy-flow.fullname" . }}-{{ .Values.consortium.name }}-configtx
+      containers:
+        - name: create-genesis
+          image: {{ .Values.dependencies.tools.image }}
+          imagePullPolicy: IfNotPresent
+          command: 
+            - sh 
+            - -c 
+            - |
+              sh /script/tools.sh create genesis --peerOrgs ${PEER_ORGS} --ordererOrgs ${ORDERER_ORGS} --configPath /config --baseDir /tmp/crypto --import --log debug
+          env:
+            - name: PEER_ORGS
+              value: {{ include "fabric-deploy-flow.consortium.peerOrgs" . }}
+            - name: ORDERER_ORGS
+              value: {{ include "fabric-deploy-flow.consortium.ordererOrgs" . }}
+            - name: GLOBAL_CONSORTIUM_NAME
+              value: {{ .Values.consortium.name }} 
+            - name: GLOBAL_AFFILIATION
+              value: svc.cluster.local
+            - name: FABRIC_CFG_PATH
+              value: /config
+          volumeMounts: 
+            - name: configtx
+              mountPath: /config
+            - name: script-api
+              mountPath: /script/api
+            - name: script-utils
+              mountPath: /script/utils
+            - name: script-cmd
+              mountPath: /script
+            - name: kubeconfig
+              mountPath: /root/.kube
+{{- end }}

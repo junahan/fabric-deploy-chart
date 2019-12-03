@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ca-server
+spec:
+  selector:
+    matchLabels:
+      app: ca-server
+  template:
+    metadata:
+      labels:
+        app: ca-server
+    spec:
+      containers:
+      - name: ca-server
+        image: hyperledger/fabric-ca:1.4.2
+        imagePullPolicy: IfNotPresent
+        command:
+          - sh
+          - -c 
+          - |
+            fabric-ca-server start -b admin:adminpw
+        ports:
+          - containerPort: 7054
+            protocol: TCP 
+            name: http 
+        resources:
+          limits: {}
+
+---
+apiVersion: v1
+kind: Service 
+metadata:
+  name: org1-ca-server
+spec:
+  type: ClusterIP
+  ports:
+    - port: 7054
+      targetPort: 7054
+      protocol: TCP
+      name: ca-port
+  selector:
+    app: ca-server

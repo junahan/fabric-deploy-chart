@@ -1,0 +1,28 @@
+{{- $fullname := include "fabric-deploy-flow.fullname" . }}
+{{- $labels := include "fabric-deploy-flow.labels" . }}
+{{- range $i, $peerOrg := .Values.consortium.peerOrgs }}
+{{- range $j, $node := $peerOrg.nodes }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $node }}
+  namespace: {{ $peerOrg.name }}
+  labels:
+{{ $labels | indent 4 }}
+spec:
+  type: {{ $.Values.service.type }}
+  ports:
+    - port: 7051
+      targetPort: 7051
+      protocol: TCP
+      name: grpc
+    - port: 7053
+      targetPort: 7053
+      protocol: TCP
+      name: event
+  selector:
+    app.kubernetes.io/name: {{ $node }}-{{ $peerOrg.name }}
+    app.kubernetes.io/instance: {{ $node }}-{{ $peerOrg.name }}
+{{- end }}
+{{- end }}

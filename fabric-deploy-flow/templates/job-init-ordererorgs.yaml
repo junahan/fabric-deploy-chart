@@ -1,0 +1,63 @@
+{{- if .Values.consortium.recreated }}
+{{ $fullname := include "fabric-deploy-flow.fullname" . }}
+{{- range $i, $ordererOrg := .Values.consortium.ordererOrgs }}
+---
+apiVersion: batch/v1
+kind: Job 
+metadata:
+  name: {{ $fullname }}-{{ $ordererOrg.name }}-init-job
+  annotations:
+    "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": "before-hook-creation"
+spec:
+  template:
+    metadata:
+      name: {{ $ordererOrg.name }}-initcert-job
+    spec:
+      restartPolicy: OnFailure
+      volumes:
+      - name: kubeconfig
+        hostPath:
+          path: {{ $.Values.dependencies.kubeConfig }}
+          type: Directory
+      - name: script-api
+        configMap:
+          name: {{ $fullname }}-script-api
+      - name: script-utils
+        configMap:
+          name: {{ $fullname }}-script-utils
+      - name: script-cmd
+        configMap:
+          name: {{ $fullname }}-script-cmd
+      containers:
+      - name: {{ $ordererOrg.name }}-initcerts
+        image: {{ $.Values.dependencies.tools.image }}
+        imagePullPolicy: IfNotPresent
+        command: 
+          - sh 
+          - -c 
+          - |
+            sh /script/tools.sh cryptogen --org ${ORG_ID} --type orderer --nodes ${ORG_NODES} --import --all --log debug
+        env:
+          - name: ORG_ID
+            value: {{ $ordererOrg.name }}
+          - name: ORG_NODES
+            value: {{ $ordererOrg.nodes | join "," }}
+          - name: GLOBAL_CA_SERVER_URL
+            value: {{ $ordererOrg.caserver | quote }}
+          - name: GLOBAL_AFFILIATION
+            value: {{ $.Values.consortium.affiliation }}
+          - name: GLOBAL_CONSORTIUM_NAME
+            value: {{ $.Values.consortium.name }}
+        volumeMounts:
+          - name: script-api
+            mountPath: /script/api
+          - name: script-utils
+            mountPath: /script/utils
+          - name: script-cmd
+            mountPath: /script
+          - name: kubeconfig
+            mountPath: /root/.kube
+{{- end }}
+{{- end }}

@@ -1,0 +1,103 @@
+# Default values for fabric-deploy-flow.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+image:
+  repository: nginx
+  tag: stable
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+
+ingress:
+  enabled: false
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: chart-example.local
+      paths: []
+
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+dependencies:
+  kubeConfig: "/root/.kube"
+  tools:
+    image: fabric-utils:1.0.2
+  docker:
+    sock: "/var/run/docker.sock"  # 确认主机的文件目录，对链码安装实例化有用
+
+consortium:
+  recreated: true  
+  name: sample
+  ordererType: solo
+  repo: "hyperledger"
+  tag: 1.4.2
+  affiliation: "svc.cluster.local" # 固定
+  ordererOrgs: 
+    - name: orderer
+      id: OrdererMSP
+      caserver: http://admin:adminpw@org1-ca-server.default.svc.cluster.local:7054
+      nodes: ["orderer"]
+  peerOrgs:
+    - name: org1
+      id: Org1MSP
+      caserver: http://admin:adminpw@org1-ca-server.default.svc.cluster.local:7054 
+      nodes: ["peer0","peer1"]
+    - name: org2
+      id: Org2MSP
+      caserver: http://admin:adminpw@org1-ca-server.default.svc.cluster.local:7054 
+      nodes: ["peer0"]
+  
+channel:
+  enabled: true  
+  name: "mychannel"
+
+# 链码安装与启动在测试中，暂未开放
+chaincode:
+  enabled: false 
+  channel: "mychannel"
+  name: "mycc"
+  version: "0.1"
+  path: ""
+  args: ""
+  sourceFrom: # 链码存储；建议nfs
+    enabled: false 
+    size: 5Gi
+    storageClass: ""
+
+# 是否启动explorer
+explorer:
+  enabled: false 
+
+# 清理
+cleanup:
+  enabled: true 
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

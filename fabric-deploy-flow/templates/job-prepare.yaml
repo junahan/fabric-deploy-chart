@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: Job 
+metadata:
+  name: {{ include "fabric-deploy-flow.fullname" . }}-prepare-job
+  annotations:
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": "before-hook-creation"
+spec:
+  template:
+    metadata:
+      name: prepare-job
+    spec:
+      restartPolicy: OnFailure
+      volumes:
+        - name: kubeconfig
+          hostPath:
+            path: {{ $.Values.dependencies.kubeConfig }}
+            type: Directory
+      containers:
+        - name: "prepare-job"
+          image: "fabric-utils:1.0.0"
+          imagePullPolicy: IfNotPresent
+          command: 
+            - sh 
+            - -c 
+            - |
+              orgs=${PEER_ORGS//,/ }
+              for org in ${orgs[@]}; do
+                logs=`kubectl get ns $org 2>&1`
+                res=`echo $logs|grep "NotFound"|wc -l`
+                if [ $res -gt 0 ]; then  
+                  kubectl create ns $org 
+                fi 
+              done 
+              orgs=${ORDERER_ORGS//,/ }
+              for org in ${orgs[@]}; do 
+                logs=`kubectl get ns $org 2>&1`
+                res=`echo $logs|grep "NotFound"|wc -l`
+                if [ $res -gt 0 ]; then  
+                  kubectl create ns $org 
+                fi 
+              done 
+          env:
+            - name: PEER_ORGS
+              value: {{ include "fabric-deploy-flow.consortium.peerOrgs" . }}
+            - name: ORDERER_ORGS
+              value: {{ include "fabric-deploy-flow.consortium.ordererOrgs" . }}
+          volumeMounts:
+            - name: kubeconfig
+              mountPath: /root/.kube

@@ -1,0 +1,48 @@
+{{- if .Values.cleanup.enabled }}
+apiVersion: batch/v1
+kind: Job 
+metadata:
+  name: {{ include "fabric-deploy-flow.fullname" . }}-cleanup-job
+  annotations:
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "20"
+    "helm.sh/hook-delete-policy": "hook-failed,hook-succeeded"
+spec:
+  template:
+    metadata:
+      name: cleanup-job
+    spec:
+      restartPolicy: OnFailure
+      volumes:
+        - name: kubeconfig
+          hostPath:
+            path: {{ $.Values.dependencies.kubeConfig }}
+            type: Directory
+      containers:
+        - name: "cleanup-job"
+          image: "fabric-utils:1.0.0"
+          imagePullPolicy: IfNotPresent
+          command: 
+            - sh 
+            - -c 
+            - |
+              orgs=${PEER_ORGS//,/ }
+              for org in ${orgs[@]}; do 
+                kubectl delete secret --all -n $org
+                kubectl delete ns $org
+              done
+              orgs=${ORDERER_ORGS//,/ }
+              for org in ${orgs[@]}; do 
+                kubectl delete secret --all -n $org
+                kubectl delete ns $org 
+              done 
+              kubectl delete job --all 
+          env:
+            - name: PEER_ORGS
+              value: {{ include "fabric-deploy-flow.consortium.peerOrgs" . }}
+            - name: ORDERER_ORGS
+              value: {{ include "fabric-deploy-flow.consortium.ordererOrgs" . }}
+          volumeMounts:
+            - name: kubeconfig
+              mountPath: /root/.kube
+{{- end }}

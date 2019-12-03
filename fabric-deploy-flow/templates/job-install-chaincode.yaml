@@ -1,0 +1,81 @@
+{{- if .Values.chaincode.enabled }}
+apiVersion: batch/v1
+kind: Job 
+metadata:
+  name: {{ include "fabric-deploy-flow.fullname" . }}-chaincode-install-job
+  annotations:
+    "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "20"
+    "helm.sh/hook-delete-policy": "before-hook-creation"
+spec:
+  template:
+    metadata:
+      name: {{ include "fabric-deploy-flow.fullname" . }}-chaincode-install-job
+    spec:
+      restartPolicy: OnFailure
+      volumes:
+        - name: kubeconfig
+          hostPath:
+            path: {{ $.Values.dependencies.kubeConfig }}
+            type: Directory
+        - name: script-api
+          configMap:
+            name: {{ include "fabric-deploy-flow.fullname" . }}-script-api
+        - name: script-utils
+          configMap:
+            name: {{ include "fabric-deploy-flow.fullname" . }}-script-utils
+        - name: script-cmd
+          configMap:
+            name: {{ include "fabric-deploy-flow.fullname" . }}-script-cmd
+        - name: data-share
+          emptyDir: {}
+        - name: chaincode-store
+          hostPath:
+            path: /root/k8s/script/chaincode
+            type: Directory
+      containers:
+        - name: init-certs
+          image: {{ .Values.dependencies.tools.image }}
+          imagePullPolicy: IfNotPresent
+          command: 
+            - sh 
+            - -c
+            - |
+              sh /script/tools.sh install chaincode --peerOrgs ${PEER_ORGS} --ordererOrgs ${ORDERER_ORGS} --ccName ${CC_NAME} --ccVer ${CC_VERSION} --ccPath ${CC_PATH} --ccArgs ${CC_ARGS} --instantiated --targetOrderer ${ORDERER_TARGET_HOST} --channelID ${CHANNEL_ID} --log debug  
+          env:
+            - name: PEER_ORGS
+              value: {{ include "fabric-deploy-flow.consortium.peerOrgs" . }}
+            - name: ORDERER_ORGS
+              value: {{ include "fabric-deploy-flow.consortium.ordererOrgs" . }}
+            - name: CHANNEL_ID
+              value: {{ .Values.chaincode.channel }}
+            - name: GLOBAL_CONSORTIUM_NAME
+              value: {{ .Values.consortium.name }} 
+            - name: GLOBAL_AFFILIATION
+              value: "svc.cluster.local"
+            - name: ORDERER_TARGET_HOST
+              value: {{ include "fabric-deploy-flow.target.orderer" . }}:7050
+            - name: FABRIC_CFG_PATH
+              value: /etc/hyperledger/fabric
+            - name: CC_NAME
+              value: {{ .Values.chaincode.name }}
+            - name: CC_VERSION
+              value: {{ .Values.chaincode.version}}
+            - name: CC_PATH
+              value: {{ .Values.chaincode.path }}
+            - name: CC_ARGS
+              value: {{ .Values.chaincode.args }}
+          volumeMounts: 
+            - name: configtx
+              mountPath: /config
+            - name: script-api
+              mountPath: /script/api
+            - name: script-utils
+              mountPath: /script/utils
+            - name: script-cmd
+              mountPath: /script
+            - name: kubeconfig
+              mountPath: /root/.kube
+            - name: data-share
+              mountPath: /tmp/crypto
+{{- end }}

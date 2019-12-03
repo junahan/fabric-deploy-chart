@@ -1,0 +1,182 @@
+apiVersion: v1
+kind: ConfigMap 
+metadata:
+  name: {{include "fabric-deploy-flow.fullname" .}}-script-cmd
+data:
+  tools.sh: |
+    #!/bin/bash 
+    source /script/utils/log.sh 
+    source /script/utils/utils.sh 
+    source /script/api/api.sh 
+
+    CryptogenAction() {
+        INFO "** cryptogen **"
+        Fcn_SetCryptoBase $v_CryptoBase
+        Fcn_SetCAUrl $v_CAServer
+        Fcn_SetAffiliation $v_Affiliation
+        Fcn_ParseURL
+
+        Fcn_Cryptogen $v_Org $v_Type $v_Roles
+        if [ $v_Import == true ]; then
+            INFO "** import secret **" 
+            Fcn_ImportSecret $v_Org $v_All 
+        fi 
+    }
+
+    ExportAction() {
+        INFO "** export **"
+        Fcn_SetCryptoBase $v_CryptoBase
+        Fcn_SetAffiliation $v_Affiliation
+        if [ "$v_Roles" != "" ]; then 
+            Fcn_ExportSecret $v_Org $v_Roles
+        else
+            Fcn_ExportSecret $v_Org $v_All
+        fi 
+    }
+
+    CreateGenesisAction() {
+        INFO "** create genesis **"
+        Fcn_SetCryptoBase $v_CryptoBase
+        Fcn_SetAffiliation $v_Affiliation
+        Fcn_CreateGenesisBlock $v_PeerOrgs $v_OrdererOrgs $v_ConfigPath $v_Import
+    }
+
+    CreateChannelAction() {
+        INFO "** create channel **"
+        Fcn_SetCryptoBase $v_CryptoBase
+        Fcn_SetAffiliation $v_Affiliation
+        Fcn_CreateChannelFile $v_PeerOrgs $v_OrdererOrgs $v_ChannelID $v_ConfigPath 
+    }
+
+    ChannelInstallAction() {
+        INFO "** install channel **"
+        Fcn_SetCryptoBase "/opt/data/crypto"
+        Fcn_SetAffiliation $v_Affiliation
+        baseOrg=$(echo $v_PeerOrgs | awk -F',' '{print $1}')
+        baseOrdererOrg=$(echo $v_OrdererOrgs | awk -F',' '{print $1}')
+        caFile=/opt/data/crypto/$(Fcn_OrganizationID $baseOrdererOrg)/msp/tlscacerts/tlscacert.pem
+        if [ ! -f "$caFile" ]; then 
+            ERROR "cafile[$caFile] not exist"
+        fi 
+        if [ "$v_TargetOrderer" == "" ]; then 
+            ERROR "orderer target peer not specified"
+        fi 
+        Fcn_WaitForOrdererUp $baseOrdererOrg
+        Fcn_CreateChannel $baseOrg $v_ChannelID $v_TargetOrderer $caFile
+        blockFile=$v_ChannelID.block
+        if [ $v_Joined == true ]; then 
+            Fcn_JoinChannel $v_PeerOrgs $blockFile 
+        fi
+    }
+
+    ChaincodeInstallAction() {
+        Fcn_SetCryptoBase "/opt/data/crypto"
+        Fcn_SetAffiliation $v_Affiliation
+        if [ "$v_ccName" == "" ] || [ "$v_ccVer" == "" ] || [ "$v_ccPath" == "" ]; then 
+            ERROR "chaincode name, version, path is empty"
+        fi 
+        Fcn_PrepareCrypto $v_PeerOrgs $v_OrdererOrgs 
+        Fcn_InstallChaincode $v_PeerOrgs $v_ccName $v_ccVer $v_ccPath
+        if [ $v_Instantiate == true ]; then 
+            if [ "$v_ChannelID" == "" ] || [ "$v_ccArgs" == "" ]; then 
+                ERROR "channel or chaincode args is empty"
+            fi 
+            baseOrg=$(echo $v_PeerOrgs | awk -F',' '{print $1}')
+            if [ "$v_TargetOrderer" == "" ]; then 
+                ERROR "orderer target peer not specified"
+            fi 
+            baseOrdererOrg=$(echo $v_OrdererOrgs | awk -F',' '{print $1}')
+            caFile=/opt/data/crypto/$(Fcn_OrganizationID $baseOrdererOrg)/msp/tlscacerts/tlscacert.pem
+            if [ ! -f "$caFile" ]; then 
+                ERROR "cafile[$caFile] not exist"
+            fi
+            Fcn_InstantiateChaincode $baseOrg $v_TargetOrderer $v_ChannelID $v_ccName $v_ccVer $v_ccArgs
+        fi 
+    }
+
+    # input params:
+    v_PeerOrgs=""
+    v_OrdererOrgs=""
+    v_Org=""
+    v_Roles=""
+    v_Type=""
+    v_CAServer=""
+    v_Affiliation=""
+    v_Action=""
+    v_Import=false 
+    v_All=false 
+    v_Log=""
+    v_ChannelID="mychannel"
+    v_CryptoBase=""
+    v_CreateAction=""
+    v_ConfigPath="null"
+    v_Joined=false
+    v_Instantiate=false
+    v_TargetOrderer=""
+    v_ccName=""
+    v_ccVer=""
+    v_ccPath=""
+    v_ccArgs=""
+    v_ccPolicy=""
+
+    while [ "$#" -ge 1 ]; do 
+        case "$1" in 
+            cryptogen) v_Action=$1; shift 1;;
+            create) v_Action=$1; shift 1;;
+            export) v_Action=$1; shift 1;;
+            create) v_Action=$1; shift 1;;
+            install) v_Action=$1; shift 1;;
+            genesis) v_CreateAction=$1; shift 1;; 
+            channel) v_CreateAction=$1; shift 1;;
+            chaincode) v_CreateAction=$1; shift 1;;
+            clean) v_Action=$1; shift 1;;
+            --org) v_Org=$2; shift 2;;
+            --type) v_Type=$2; shift 2;;
+            --nodes) v_Roles=$2; shift 2;;
+            --baseDir) v_CryptoBase=$2; shift 2;;
+            --peerOrgs) v_PeerOrgs=$2; shift 2;;
+            --ordererOrgs) v_OrdererOrgs=$2; shift 2;;
+            --log) Fcn_SetLogLevel $2; shift 2;;
+            --caserver) Fcn_SetCAUrl $2; shift 2;;
+            --configPath) v_ConfigPath=$2; shift 2;;
+            --channelID) v_ChannelID=$2; shift 2;;
+            --targetOrderer) v_TargetOrderer=$2; shift 2;;
+            --ccName) v_ccName=$2; shift 2;;
+            --ccVer) v_ccVer=$2; shift 2;;
+            --ccPath) v_ccPath=$2; shift 2;;
+            --ccArgs) v_ccArgs=$2; shift 2;;
+            --ccPolicy) v_ccPolicy=$2; shift 2;; 
+            --import) v_Import=true; shift 1;;
+            --joinAll) v_Joined=true; shift 1;;
+            --instantiated) v_Instantiate=true; shift 1;;
+            --all) v_All=true; shift 1;;
+            *) echo "unknown parameter $1." ; exit 1 ; break;;
+        esac
+    done 
+
+    case "$v_Action" in 
+        cryptogen)
+            CryptogenAction
+            ;;
+        export)
+            ExportAction
+            ;;
+        create) 
+            if [ "$v_CreateAction" == "channel" ]; then 
+                CreateChannelAction
+            elif [ "$v_CreateAction" == "genesis" ]; then 
+                CreateGenesisAction
+            fi 
+            ;;
+        install)
+            INFO "install action:$v_CreateAction"
+            if [ "$v_CreateAction" == "channel" ]; then 
+                ChannelInstallAction
+            elif [ "$v_CreateAction" == "chaincode" ]; then 
+                ChaincodeInstallAction 
+            fi 
+            ;;
+        *)
+            echo "unknown action:$v_Action";
+            exit 1;;
+    esac

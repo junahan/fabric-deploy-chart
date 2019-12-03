@@ -1,0 +1,175 @@
+apiVersion: v1
+kind: ConfigMap 
+metadata:
+  name: {{include "fabric-deploy-flow.fullname" .}}-script-utils
+data:
+  log.sh: |
+    #!/bin/bash 
+    LOG_DEBUG=4
+    LOG_INFO=3
+    LOG_WARN=2
+    LOG_ERROR=1
+    LOG_FATAL=0
+    LogLevel=$LOG_INFO
+
+    export Log_SH=true 
+
+    INFO() {
+        if [ $LogLevel -ge $LOG_INFO ]; then 
+            echo -e "\033[32m [Info] \033[0m: $1"
+        fi 
+    }
+
+    ERROR() {
+        if [ $LogLevel -ge $LOG_ERROR ]; then 
+            echo -e "\033[31m [Error] \033[0m: $1"
+            exit 1
+        fi 
+    }
+
+    WARN() {
+        if [ $LogLevel -ge $LOG_WARN ]; then 
+            echo -e "\033[33m [Warn] \033[0m: $1"
+        fi 
+    }
+
+    DEBUG() {
+        if [ $LogLevel -ge $LOG_DEBUG ]; then 
+            echo -e "\033[34m [Debug] \033[0m: $1"
+        fi 
+    }
+
+    FATAL() {
+        if [ $LogLevel -ge $LOG_FATAL ]; then 
+            echo -e "\033[34m [Debug] \033[0m: $1"
+        fi
+    }
+
+    Fcn_SetLogLevel() {
+        loglvl=$1
+        if [ "$loglvl" == "info" ]; then 
+            LogLevel=$LOG_INFO
+        elif [ "$loglvl" == "debug" ]; then 
+            LogLevel=$LOG_DEBUG
+        elif [ "$loglvl" == "error" ]; then 
+            LogLevel=$LOG_ERROR
+        elif [ "$loglvl" == "warn" ]; then 
+            LogLevel=$LOG_WARN
+        elif [ "$loglvl" == "fatal" ]; then 
+            LogLevel=$LOG_FATAL
+        fi 
+    }
+  utils.sh: |
+    #!/bin/bash 
+    G_CryptoBase="./crypto-config"
+    G_Affiliation="example.com"
+    G_Consortium="sample"
+    G_CAServer="http://admin:adminpw@localhost:7054"
+
+    Fcn_SetCryptoBase() {
+        if [ "$1" != "" ]; then 
+            G_CryptoBase=$1
+        elif [ "$GLOBAL_CRYPTO_BASE" != "" ]; then 
+            G_CryptoBase=$GLOBAL_CRYPTO_BASE
+        fi 
+    }
+
+    Fcn_SetAffiliation() {
+        if [ "$1" != "" ]; then 
+            G_Affiliation=$1
+        elif [ "$GLOBAL_AFFILIATION" != "" ]; then 
+            G_Affiliation=$GLOBAL_AFFILIATION
+        fi 
+    }
+
+    Fcn_SetCAUrl() {
+        if [ "$1" != "" ]; then 
+            G_CAServer=$1
+        elif [ "$GLOBAL_CA_SERVER_URL" != "" ]; then 
+            G_CAServer=$GLOBAL_CA_SERVER_URL
+        fi 
+    }
+
+    Fcn_GenesisBlockKey() {
+        echo "$GLOBAL_CONSORTIUM_NAME-genesis-block"
+    }
+    
+    FCN_RequiredCheck() {
+        if [ "$1" == "" ]; then 
+            ERROR $2
+        fi 
+    }
+
+    Fcn_Affiliation() {
+        affa=$1
+        s_affiliation=""
+        arr=${affa//./ }
+        for v in ${arr[@]}; do 
+            if [ "$s_affiliation" == "" ]; then 
+                s_affiliation=$v
+            else 
+                s_affiliation=$v.$s_affiliation
+            fi 
+        done
+        echo $s_affiliation
+    }
+
+    Fcn_OrganizationID() {
+        echo "$1.$G_Affiliation"
+    }
+
+    Fcn_Namespace() {
+        echo "$1"
+    }
+
+    Fcn_OrgBaseDir() {
+        orgID=$(Fcn_OrganizationID $1)
+        echo "$G_CryptoBase/$orgID"
+    }
+
+    Fcn_FirstUpperCase() {
+        echo $1 | sed -e "s/\b\(.\)/\u\1/g"
+    }
+
+    Fcn_OrgMSPID() {
+        echo "$(Fcn_FirstUpperCase $1)MSP"
+    }
+
+    Fcn_PeerAddress() {
+        peer=$1
+        org=$2
+        echo $peer.$(Fcn_OrganizationID $org) 
+    }
+
+    Fcn_GetFirstPeerAddress() {
+        org=$1
+        baseDir=$(Fcn_OrgBaseDir $org)
+        if [ -d "$baseDir/peers" ]; then 
+            peers=$(ls $baseDir/peers)
+            peer=$(echo $peers | awk -F' ' '{print $1}')
+            echo $peer.$(Fcn_OrganizationID $org)
+        fi 
+        if [ -d "$baseDir/orderers" ]; then 
+            orderers=$(ls $baseDir/orderers)
+            orderer=$(echo $orderers | awk -F' ' '{print $1}')
+            echo $orderer.$(Fcn_OrganizationID $org)
+        fi 
+    }
+
+    g_CAadmin=""
+    g_CAsecret=""
+    g_CAurl=""
+
+    Fcn_ParseURL() {
+        url=$G_CAServer
+        g_CAadmin=`echo $url | awk -F'@' '{print $1}' | awk -F'[/:]' '{print $4}'`
+        g_CAsecret=`echo $url | awk -F'@' '{print $1}' | awk -F'[/:]' '{print $5}'`
+        g_CAurl=`echo $url | awk -F'@' '{print $2}'`
+        if [ "$g_CAadmin" == "" ] || [ "$g_CAsecret" == "" ]; then 
+            ERROR "ca admin or secret is empty"
+        fi 
+        if [ "$g_CAurl" == "" ]; then 
+            ERROR "ca url is empty"
+        fi 
+    }
+    

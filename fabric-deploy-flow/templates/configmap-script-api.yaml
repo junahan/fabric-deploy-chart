@@ -1,0 +1,586 @@
+apiVersion: v1
+kind: ConfigMap 
+metadata:
+  name: {{include "fabric-deploy-flow.fullname" .}}-script-api
+data:
+  api.sh: |
+    #!/bin/bash 
+    __initCA() {
+        if [ -d "$G_CryptoBase/ca" ]; then 
+            WARN "cryptobase is exit"
+            return 
+        fi 
+        DEBUG "fabric-ca-client enroll -u http://$g_CAadmin:$g_CAsecret@$g_CAurl -H $G_CryptoBase/ca"
+        logs=`fabric-ca-client enroll -u http://$g_CAadmin:$g_CAsecret@$g_CAurl -H $G_CryptoBase/ca 2>&1`
+        res=`echo $logs | grep "connect: connection refused" | wc -l`
+        if [ $res -gt 0 ]; then 
+            rm -rf $G_CryptoBase
+            ERROR "connect caserver fail: $logs"
+        fi 
+        res=`echo $logs | grep "Error Code" | wc -l`
+        if [ $res -gt 0 ]; then
+            rm -rf $G_CryptoBase
+            ERROR "enroll tlsca fail: $logs"
+        fi
+        if [ ! -f "$G_CryptoBase/ca/msp/signcerts/cert.pem" ]; then 
+            rm -rf $G_CryptoBase
+            ERROR "init ca fail:$logs"
+        fi 
+        INFO "initca [$g_CAurl] success"
+    }
+
+    __registerAffiliation() {
+        affiliation=$1
+        DEBUG "fabric-ca-client affiliation list --affiliation $affiliation -H $G_CryptoBase/ca"
+        logs=`fabric-ca-client affiliation list --affiliation $affiliation -H $G_CryptoBase/ca 2>&1`
+        res=`echo $logs | grep "Error Code: 16" | wc -l`
+        if [ $res -gt 0 ]; then 
+            WARN "affiliation: $affiliation not register, then register it"
+            DEBUG "fabric-ca-client affiliation add $affiliation -H $G_CryptoBase/ca --force"
+            logs=`fabric-ca-client affiliation add $affiliation -H $G_CryptoBase/ca --force 2>&1`
+            res=`echo $logs | grep "Successfully" | wc -l`
+            if [ $res -eq 0 ]; then 
+                ERROR "affiliation create fail: $logs"
+            fi  
+            INFO "affiliation [$affiliation] create success"
+        else 
+            INFO "affiliation [$affiliation] exist"
+        fi
+    }
+
+    __register() {
+        roleID=$1
+        roleSecret=$2 
+        roleType=$3
+        basePath=$4
+        affiliation=$5
+
+        logs=`fabric-ca-client identity list --id $roleID -H $basePath 2>&1`
+        res=`echo $logs | grep "Error Code: 63" | wc -l`
+        if [ $res -gt 0 ]; then
+            WARN "[$roleID] not register, do register"
+            if [ "$roleType" == "admin" ]; then
+                DEBUG "fabric-ca-client register --id.name $roleID --id.secret $roleSecret --id.type client --id.affiliation \"$affiliation\" --csr.hosts $roleID --id.attrs '\"hf.Registrar.Roles=client,orderer,peer,user\",\"hf.Registrar.DelegateRoles=client,orderer,peer,user\",hf.Registrar.Attributes=*,hf.GenCRL=true,hf.Revoker=true,hf.AffiliationMgr=true,hf.IntermediateCA=true,role=admin:ecert' -H $basePath" 
+                logs=`fabric-ca-client register --id.name $roleID --id.secret $roleSecret --id.type client --id.affiliation "$affiliation" --csr.hosts $roleID --id.attrs '"hf.Registrar.Roles=client,orderer,peer,user","hf.Registrar.DelegateRoles=client,orderer,peer,user",hf.Registrar.Attributes=*,hf.GenCRL=true,hf.Revoker=true,hf.AffiliationMgr=true,hf.IntermediateCA=true,role=admin:ecert' -H $basePath 2>&1`
+            else 
+                DEBUG "fabric-ca-client register --id.name $roleID --id.secret $roleSecret --id.type $roleType --id.affiliation \"$affiliation\" --csr.hosts $roleID --id.attrs \"role=$roleType:ecert\" -H $basePath"
+                logs=`fabric-ca-client register --id.name $roleID --id.secret $roleSecret --id.type $roleType --id.affiliation "$affiliation" --csr.hosts $roleID --id.attrs "role=$roleType:ecert" -H $basePath 2>&1`
+            fi 
+            res=`echo $logs | grep "Error Code" | wc -l`
+            if [ $res -gt 0 ]; then 
+                ERROR "[$roleID] register fail: $logs"
+            fi
+            INFO "[$roleID] register success"
+        else
+            INFO "[$roleID] has registed"
+        fi 
+    }
+
+    __enroll() {
+        enrollID=$1
+        enrollSecret=$2
+        output=$3
+        INFO "enroll [$enrollID] msp certificate ..."
+        DEBUG "fabric-ca-client enroll --csr.hosts $enrollID -u http://$enrollID:$enrollSecret@$g_CAurl"
+        logs=`fabric-ca-client enroll --csr.hosts $enrollID -u http://$enrollID:$enrollSecret@$g_CAurl -H $output 2>&1`
+        __checkError  "$output/msp" "$logs" 
+        rm -rf $output/msp/user
+        mkdir $output/msp/admincerts
+        mkdir $output/msp/tlscacerts
+
+        INFO "enroll [$enrollID] tls certificate  ..."
+        tlsDir=$(cd $output; pwd)/tls
+        DEBUG "fabric-ca-client enroll -d --enrollment.profile tls --csr.hosts $enrollID -u http://$enrollID:$enrollSecret@$g_CAurl -M $tlsDir"
+        # fabric-ca-client enroll --enrollment.profile tls $enrollID -u http://$enrollID:$enrollSecret@$g_CAurl -M $output  #这样有问题
+        logs=`fabric-ca-client enroll -d --enrollment.profile tls --csr.hosts $enrollID -u http://$enrollID:$enrollSecret@$g_CAurl -M $tlsDir 2>&1`
+        __checkError "$output/tls" $logs
+
+        rm -rf $output/tls/user
+        rm -rf $output/tls/cacerts
+        cp $output/tls/tlscacerts/*.pem $output/msp/tlscacerts 
+        cp $output/tls/signcerts/*.pem $output/tls/server.crt 
+        cp $output/tls/keystore/*_sk $output/tls/server.key 
+        cp $output/tls/tlscacerts/*.pem $output/tls/ca.crt 
+        
+        INFO "[$enrollID] enroll success"
+    }
+
+    __checkError() {
+        path=$1
+        logs=$2
+        res=`echo $logs | grep "Error Code" | wc -l`
+        if [ $res -gt 0 ]; then
+            ERROR "[$enrollID] enroll fail: $logs"
+        fi
+        signcert=$(cd $path/signcerts; ls)
+        if [ "$signcert" == "" ]; then 
+            WARN "signcert not exist, fail to enoll"
+            ERROR "$logs"
+        fi 
+    }
+
+    __getSecret() {
+        key=$1
+        keytype=$2
+        outPath=$3
+        namespace=$4
+        if [ ! -d "$outPath" ]; then 
+            mkdir -p $outPath
+        fi 
+        INFO "export secret [$key] to $outPath"
+        if [ "$keytype" == "generic" ]; then 
+            filename=`kubectl get secret $key -n $namespace -o json | jq .data | jq 'keys'[0] | sed 's/\"//g'`
+            if [ "$filename" == "" ]; then 
+                ERROR "filename is empty"
+            fi 
+            kubectl get secret $key -n $namespace -o json | jq .data | jq '.[]' | sed 's/\"//g' | base64 -d > $outPath/$filename
+        elif [ "$keytype" == "tls" ]; then 
+            kubectl get secret $key -n $namespace -o json | jq .data | jq .'["tls.crt"]' | sed 's/\"//g' | base64 -d > $outPath/server.crt
+            kubectl get secret $key -n $namespace -o json | jq .data | jq .'["tls.key"]' | sed 's/\"//g' | base64 -d > $outPath/server.key
+        fi 
+    }
+
+    __pushSecret() {
+        secretKey=$1
+        key=$2
+        file=$3
+        namespace=$5
+        keytype=$4
+        if [ "$namespace" == "" ]; then
+            namespace="default"
+        else
+            logs=`kubectl create ns $namespace 2>&1`
+        fi 
+        logs=`kubectl get secret $secretKey -n $namespace 2>&1`
+        res=`echo $logs | grep "not found" | wc -l`
+        if [ $res -eq 0 ]; then 
+            WARN "[$secretKey] exist, need delete"
+            kubectl delete secret $secretKey -n $namespace
+        fi 
+        if [ "$keytype" == "tls" ]; then
+            DEBUG "kubectl create secret tls $secretKey --key $key --cert $file -n $namespace"
+            logs=`kubectl create secret tls $secretKey --key $key --cert $file -n $namespace 2>&1`
+        else  
+            DEBUG "kubectl create secret generic $secretKey --from-file=$key=$file -n $namespace"
+            logs=`kubectl create secret generic $secretKey --from-file=$key=$file -n $namespace 2>&1`
+        fi 
+        res=`echo $logs | grep "created" | wc -l`
+        if [ $res -eq 0 ]; then
+            ERROR "create secret [$secretKey] fail:$logs"
+        fi
+        INFO "secret [$secretKey] create success"
+    }
+
+    __outputConfig() {
+        outPath=$1
+        echo "NodeOUs:
+        Enable: true
+        ClientOUIdentifier:
+            Certificate: cacerts/cacert.pem
+            OrganizationalUnitIdentifier: client
+        PeerOUIdentifier:
+            Certificate: cacerts/cacert.pem
+            OrganizationalUnitIdentifier: peer" > $outPath/config.yaml
+    }
+
+    __type() {
+        if [ "$1" == "" ]; then 
+            ERROR "required 1 args, but 0"
+        fi 
+        c=`kubectl get secret -n $1 2>&1 | grep "$1-peer-" | wc -l `
+        if [ $c -gt 0 ]; then 
+            echo "peer"
+            return 
+        fi 
+        c=`kubectl get secret -n $1 2>&1 | grep "$1-orderer-" | wc -l`
+        if [ $c -gt 0 ]; then 
+            echo "orderer"
+            return 
+        fi
+        echo ""
+    }
+
+    initOrg() {
+        org=$1
+        orgID=$(Fcn_OrganizationID $org)
+        __initCA 
+        if [ -d "$G_CryptoBase/$orgID/admin" ]; then 
+            WARN "$orgID exist"
+            return 
+        fi 
+        affiliation=$(Fcn_Affiliation $orgID)
+        __registerAffiliation $affiliation 
+        orgAdminID="Admin@$orgID"
+        orgAdminSecret="12345"
+        dependentPath=$G_CryptoBase/ca
+        __register $orgAdminID $orgAdminSecret "admin" $dependentPath $affiliation
+        baseDir=$G_CryptoBase/$orgID/admin
+        __enroll $orgAdminID $orgAdminSecret $baseDir
+        mkdir -p $G_CryptoBase/$orgID/msp
+        cp $baseDir/msp/signcerts/*.pem  $baseDir/msp/admincerts 
+        cp -r $baseDir/msp/cacerts $G_CryptoBase/$orgID/msp
+        cp -r $baseDir/msp/tlscacerts $G_CryptoBase/$orgID/msp
+        cp -r $baseDir/msp/admincerts $G_CryptoBase/$orgID/msp 
+        INFO "init [$org] success"
+    }
+
+    initRole() {
+        name=$1
+        org=$2
+        type=$3
+        orgID=$(Fcn_OrganizationID $org)
+        baseDir=$G_CryptoBase/$orgID
+        if [ ! -d "$baseDir/admin" ]; then 
+            ERROR "organization admin not init, refer to $baseDir/admin"
+        fi 
+        roleBaseDir=$baseDir/${type}s/$name
+        roleID=$name.$orgID
+        roleSecret="12345"
+        if [ -d "$roleBaseDir" ]; then 
+            WARN "[$roleID] exist"
+        fi 
+        dependentPath=$baseDir/admin
+        affiliation=$(Fcn_Affiliation $orgID)
+        __register $roleID $roleSecret $type $dependentPath $affiliation
+        __enroll $roleID $roleSecret $roleBaseDir
+        if [ "$type" == "peer" ]; then 
+            __outputConfig $roleBaseDir/msp
+        fi 
+        cp $baseDir/admin/msp/admincerts/*.pem $roleBaseDir/msp/admincerts
+    }
+
+    importSecretByRole() {
+        org=$1
+        type=$2
+        name=$3
+        orgID=$(Fcn_OrganizationID $org)
+        namespace=$(Fcn_Namespace $org)
+        orgBaseDir=$G_CryptoBase/$orgID
+        if [ ! -d "$orgBaseDir" ]; then 
+            ERROR "$orgID not exit, can't import to secret"
+        fi 
+        prefix=$name-$org-$type 
+        signcertId=$prefix-idcert
+        keycertId=$prefix-idkey
+        cacertId=$prefix-cacert 
+        tlscacertId=$prefix-tlscacert
+        tlspairId=$prefix-tlspair
+
+        if [ "$type" == "admin" ]; then 
+            adminBaseDir=$orgBaseDir/admin
+            signcert=$(cd $adminBaseDir/msp/signcerts; pwd)/$(ls $adminBaseDir/msp/signcerts)
+            keyfile=$(ls $adminBaseDir/msp/keystore)
+            keycert=$(cd $adminBaseDir/msp/keystore; pwd)/$keyfile 
+            cacert=$(cd $adminBaseDir/msp/cacerts; pwd)/$(ls $adminBaseDir/msp/cacerts)
+            tlscacert=$(cd $adminBaseDir/msp/tlscacerts; pwd)/$(ls $adminBaseDir/msp/tlscacerts)
+            tlskey=$(cd $adminBaseDir/tls/keystore; pwd)/$(ls $adminBaseDir/tls/keystore)
+            tlscert=$(cd $adminBaseDir/tls/signcerts; pwd)/$(ls $adminBaseDir/tls/signcerts)
+            __pushSecret $signcertId cert.pem $signcert "generic" $namespace
+            __pushSecret $keycertId  $keyfile $keycert "generic" $namespace
+            __pushSecret $cacertId  cacert.pem $cacert "generic" $namespace 
+            __pushSecret $tlscacertId tlscacert.pem $tlscacert "generic" $namespace
+            __pushSecret $tlspairId  $tlskey $tlscert "tls" $namespace
+        else 
+            roleBaseDir=$orgBaseDir/${type}s/$name 
+            signcert=$(cd $roleBaseDir/msp/signcerts; pwd)/$(ls $roleBaseDir/msp/signcerts)
+            keyfile=$(ls $roleBaseDir/msp/keystore)
+            keycert=$(cd $roleBaseDir/msp/keystore; pwd)/$keyfile 
+            tlskey=$(cd $roleBaseDir/tls/keystore; pwd)/$(ls $roleBaseDir/tls/keystore)
+            tlscert=$(cd $roleBaseDir/tls/signcerts; pwd)/$(ls $roleBaseDir/tls/signcerts)
+
+            __pushSecret $signcertId cert.pem $signcert "generic" $namespace 
+            __pushSecret $keycertId $keyfile $keycert "generic" $namespace
+            __pushSecret $tlspairId $tlskey $tlscert "tls" $namespace
+        fi 
+    }
+
+    exportSecretByRole() {
+        name=$1
+        org=$2
+        type=$3
+        basePath=$(Fcn_OrgBaseDir $org)
+        namespace=$(Fcn_Namespace $org)
+        prefix=$name-$org-$type 
+        if [ "$type" == "admin" ]; then 
+            orgBasePath=$basePath/admin
+            __getSecret $prefix-idcert "generic" $orgBasePath/msp/signcerts $namespace
+            __getSecret $prefix-idkey "generic" $orgBasePath/msp/keystore $namespace 
+            __getSecret $prefix-cacert "generic" $orgBasePath/msp/cacerts $namespace 
+            __getSecret $prefix-tlscacert "generic" $orgBasePath/msp/tlscacerts $namespace 
+            __getSecret $prefix-idcert "generic" $orgBasePath/msp/admincerts $namespace
+            __getSecret $prefix-tlspair "tls" $orgBasePath/tls $namespace
+            cp  $orgBasePath/msp/tlscacerts/*.pem $orgBasePath/tls/ca.crt
+        else 
+            roleBasePath=$basePath/${type}s/$name
+            __getSecret $prefix-idcert "generic" $roleBasePath/msp/signcerts $namespace
+            __getSecret $prefix-idkey "generic" $roleBasePath/msp/keystore $namespace 
+            __getSecret admin-$org-admin-cacert "generic" $roleBasePath/msp/cacerts $namespace 
+            __getSecret admin-$org-admin-tlscacert "generic" $roleBasePath/msp/tlscacerts $namespace 
+            __getSecret admin-$org-admin-idcert "generic" $roleBasePath/msp/admincerts $namespace
+            __getSecret $prefix-tlspair "tls" $roleBasePath/tls $namespace
+            cp  $roleBasePath/msp/tlscacerts/*.pem $roleBasePath/tls/ca.crt
+        fi 
+        INFO "export [$name.$org] secret success"
+    }
+
+    exportSecretOnlyOrgMSP() {
+        org=$1
+        basePath=$(Fcn_OrgBaseDir $org)
+        prefix=admin-$org-admin
+        __getSecret $prefix-cacert "generic" $basePath/msp/cacerts $org
+        __getSecret $prefix-tlscacert "generic" $basePath/msp/tlscacerts $org 
+        __getSecret $prefix-idcert "generic" $basePath/msp/admincerts $org 
+        type=$(__type $org)
+        if [ "$type" == "peer" ]; then
+            DEBUG "organization type peer, need config" 
+            __outputConfig $basePath/msp
+        fi 
+    }
+
+
+    Fcn_Cryptogen() {
+        org=$1
+        type=$2
+        roles=$3
+        
+        Fcn_ParseURL
+        
+        if [ "$org" == "" ]; then 
+            WARN "organization name is empty"
+            return 
+        fi 
+
+        initOrg $org 
+        INFO "nodes: $roles"    
+        roleArr=${roles//,/ }
+        for rn in ${roleArr[@]}; do 
+            initRole $rn $org $type 
+        done  
+    }
+
+    Fcn_ImportSecret() {
+        org=$1 
+        all=$2
+        if [ "$org" == "" ]; then 
+            ERROR "organaztion id is required"
+        fi 
+        baseDir=$(Fcn_OrgBaseDir $org)
+        DEBUG "baseDir: $baseDir, inmport all? $all"
+        if [ -d "$baseDir/admin" ]; then 
+            importSecretByRole $org "admin" "admin" $baseDir/admin 
+        fi 
+        if [ -d "$baseDir/peers" ]; then 
+            if [ $all == true ]; then
+                nodes=$(ls $baseDir/peers) 
+                for name in ${nodes[@]}; do  
+                    importSecretByRole $org "peer" $name $baseDir/peers/$name
+                done 
+            fi 
+        fi 
+        if [ -d "$baseDir/orderers" ]; then 
+            if [ $all == true ]; then
+                nodes=$(ls $baseDir/orderers) 
+                for name in ${nodes[@]}; do  
+                    importSecretByRole $org "orderer" $name $baseDir/orderers/$name
+                done 
+            fi
+        fi 
+    }
+
+    Fcn_ExportSecret() {
+        INFO "export secret"
+        org=$1
+        all=$2
+        
+        exportSecretOnlyOrgMSP $org 
+
+        if [ "$all" == "" ]; then 
+            return 
+        fi 
+        if [ $all == false ]; then 
+            return 
+        fi 
+        if [ $all == true ]; then 
+            secrets=`kubectl get secret -n $org | grep $org | awk '{print $1}' | awk -F'-' '{print $1,$2,$3}' | sort -u | tr ' ' '-'`
+            for s in ${secrets[@]}; do  
+                name=`echo $s | awk -F'-' '{print $1}'`
+                orgid=`echo $s | awk -F'-' '{print $2}'`
+                type=`echo $s | awk -F'-' '{print $3}'`
+                if [ "$org" != $orgid ]; then 
+                    WARN "org[$org, $orgid] not match"
+                    continue 
+                fi 
+                exportSecretByRole $name $orgid $type 
+            done
+        else 
+            nodes=${all//,/ }
+            for name in ${nodes[@]}; do 
+                # INFO "export node [$name]"
+                exportSecretByRole $name $org "peer"
+            done 
+        fi   
+    }
+
+    Fcn_CreateGenesisBlock() {
+        peerOrgs=$1
+        ordererOrgs=$2 
+        configPath=$3
+        import=$4
+
+        if [ ! -f "$configPath/configtx.yaml" ]; then 
+            ERROR "config.yaml not exist in $configPath"
+        fi 
+
+        orgs="$peerOrgs,$ordererOrgs"
+        orgsList=${orgs//,/ }
+        for org in ${orgsList[@]}; do 
+            Fcn_ExportSecret $org  
+        done 
+        cd $configPath
+        configtxgen --profile OrgsOrdererGenesis -outputBlock /tmp/genesis.block
+        if [ ! -f "/tmp/genesis.block" ]; then 
+            ERROR "create genesis block fail"
+        fi
+        if [ $import == true ]; then 
+            genesisKey=$(Fcn_GenesisBlockKey)
+            orgs=${ordererOrgs//,/ }
+            for org in ${orgs[@]}; do 
+                __pushSecret $genesisKey genesis.block "/tmp/genesis.block" "generic" $org 
+            done  
+        fi 
+        INFO "create genesis success"
+    }
+
+    Fcn_CreateChannelFile() {
+        peerOrgs=$1
+        ordererOrgs=$2
+        channelID=$3
+        configPath=$4 
+
+        if [ ! -f "$configPath/configtx.yaml" ]; then 
+            ERROR "config.yaml not exist in $configPath"
+        fi 
+
+        Fcn_PrepareCrypto $peerOrgs $ordererOrgs
+        channelFile=$channelID.tx
+        cd $configPath
+        INFO "configtxgen --profile OrgsChannel -outputCreateChannelTx $G_CryptoBase/$channelFile --channelID $channelID"
+        configtxgen --profile OrgsChannel -outputCreateChannelTx $G_CryptoBase/$channelFile --channelID $channelID
+        if [ ! -f "$G_CryptoBase/$channelFile" ]; then 
+            ERROR "create channel config fail"
+        fi 
+        # __pushSecret sample-channel-tx $channelFile $G_CryptoBase/$channelFile "generic" "default"
+        INFO "create channel configfile success"
+    }
+
+    __setPeerEnv() {
+        peer=$1
+        org=$2
+        INFO "set [$peer.$org]"
+        export CORE_PEER_ADDRESS="$(Fcn_PeerAddress $peer $org):7051"
+        export CORE_PEER_LOCALMSPID="$(Fcn_OrgMSPID $org)"
+        export CORE_PEER_TLS_ENABLED="true"
+        export CORE_PEER_MSPCONFIGPATH="/opt/data/crypto/${org}.svc.cluster.local/admin/msp"
+        export CORE_PEER_TLS_ROOTCERT_FILE="/opt/data/crypto/${org}.svc.cluster.local/peers/${peer}/tls/ca.crt"
+    }
+
+    Fcn_PrepareCrypto() {
+        peerOrgs=$1
+        ordererOrgs=$2
+        orgs=${ordererOrgs//,/ }
+        for org in ${orgs[@]}; do 
+            Fcn_ExportSecret $org 
+        done 
+        orgs=${peerOrgs//,/ }
+        for org in ${orgs//,/ }; do
+            Fcn_ExportSecret $org true 
+        done 
+    }
+
+    Fcn_CreateChannel() {
+        if [ $# -lt 4 ]; then 
+            INFO "invalid args,need at least 4, but $#"
+        fi 
+        baseOrg=$1
+        channelID=$2
+        ordererTarget=$3
+        caFile=$4
+        baseDir=$(Fcn_OrgBaseDir $baseOrg)
+        peers=$(ls $baseDir/peers)
+        peer=$(echo $peers | awk -F' ' '{print $1}')
+        __setPeerEnv $peer $baseOrg
+        INFO "peer channel create -o $ordererTarget -c $channelID -f /opt/data/crypto/$channelID.tx --tls --cafile $caFile"
+        peer channel create -o $ordererTarget -c $channelID -f /opt/data/crypto/$channelID.tx --tls --cafile $caFile
+        if [ ! -f "./$channelID.block" ]; then 
+            ERROR "create channel block fail"
+        fi 
+        INFO "create channel block success"
+    }
+
+    Fcn_JoinChannel() {
+        peerOrgs=$1
+        blockFile=$2
+        orgs=${peerOrgs//,/ }
+        for org in ${orgs[@]}; do 
+            baseDir=$(Fcn_OrgBaseDir $org)
+            peers=$(cd $baseDir/peers; ls)
+            for peer in ${peers[@]}; do 
+                __setPeerEnv $peer $org
+                INFO "[$peer.$org] is join channel"
+                peer channel join -b ./$blockFile
+            done  
+        done 
+    }
+
+    Fcn_WaitForOrdererUp() {
+        org=$1
+        count=0
+        INFO "wait for orderer peer running"
+        while true; do 
+            status=`kubectl get pod -n $org | grep $org-orderer | awk '{print $3}'`
+            if [ "$status" == "Running" ]; then 
+                INFO "orderer is running"
+                break 
+            fi 
+            if [ $count -gt 5 ]; then 
+                ERROR "timeout, exit"
+            fi 
+            count=$(( count+1 ))
+            sleep 2
+        done 
+    }
+
+    Fcn_InstallChaincode() {
+        peerOrgs=$1
+        name=$2
+        ver=$3
+        path=$4
+
+        orgs=${peerOrgs//,/ }
+        for org in ${orgs[@]}; do 
+            baseDir=$(Fcn_OrgBaseDir $org)
+            peers=$(cd $baseDir/peers; ls)
+            for peer in ${peers[@]}; do 
+                __setPeerEnv $peer $org
+                INFO "[$peer.$org] is join channel"
+                peer chaincode install -n $name -v $ver -p $path
+            done  
+        done  
+    }
+
+    Fcn_InstantiateChaincode() {
+        baseOrg=$1
+        targetOrderer=$2
+        channelID=$3
+        caFile=$4
+        name=$5
+        ver=$6
+        args=$7
+        
+        baseDir=$(Fcn_OrgBaseDir $baseOrg)
+        peers=$(ls $baseDir/peers)
+        peer=$(echo $peers | awk -F' ' '{print $1}')
+        __setPeerEnv $peer $baseOrg
+        INFO "peer chaincode instantiate -o $targetOrderer --tls --cafile $caFile -C $channelID -n $name -v $ver -c '$args'"
+        peer chaincode instantiate -o $targetOrderer --tls --cafile $caFile -C $channelID -n $name -v $ver -c '$args'
+    }
