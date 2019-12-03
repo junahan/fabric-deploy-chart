@@ -17,10 +17,15 @@ spec:
     spec:
       restartPolicy: OnFailure
       volumes:
+      {{- if $.Values.dependencies.kubeConfig.localHost }}
       - name: kubeconfig
         hostPath:
-          path: {{ $.Values.dependencies.kubeConfig }}
-          type: Directory
+          path: {{ $.Values.dependencies.kubeConfig.localHost }}
+      {{- else }}
+      - name: kubeconfig
+        secret:
+          secretName: {{ $.Values.dependencies.kubeConfig.secret }}
+      {{- end }}
       - name: script-api
         configMap:
           name: {{ $fullname }}-script-api

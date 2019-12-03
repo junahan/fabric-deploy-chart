@@ -43,9 +43,11 @@ resources: {}
   #   memory: 128Mi
 
 dependencies:
-  kubeConfig: "/root/.kube"
+  kubeConfig: # 下面只能选择一种
+    localHost: "/root/.kube"  # 本地映射  
+    secret: ""  # secret 存储（建议）
   tools:
-    image: fabric-utils:1.0.2
+    image: fabric-utils:1.0.3  # 依赖的镜像
   docker:
     sock: "/var/run/docker.sock"  # 确认主机的文件目录，对链码安装实例化有用
 
