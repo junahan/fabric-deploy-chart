@@ -90,7 +90,7 @@ data:
             if [ ! -f "$caFile" ]; then 
                 ERROR "cafile[$caFile] not exist"
             fi
-            Fcn_InstantiateChaincode $baseOrg $v_TargetOrderer $v_ChannelID $v_ccName $v_ccVer $v_ccArgs
+            Fcn_InstantiateChaincode $baseOrg $v_TargetOrderer $v_ChannelID $caFile $v_ccName $v_ccVer $v_ccArgs $v_ccPolicy
         fi 
     }
 

@@ -23,6 +23,11 @@ data:
   # peer node cert and key, must be exist when start
   CORE_PEER_TLS_CERT_FILE: "/etc/hyperledger/fabric/tls/pair/tls.crt"
   CORE_PEER_TLS_KEY_FILE: "/etc/hyperledger/fabric/tls/pair/tls.key"
-  CORE_PEER_TLS_ROOTCERT_FILE: "/etc/hyperledger/fabric/tls/tlscacert.pem" 
+  CORE_PEER_TLS_ROOTCERT_FILE: "/etc/hyperledger/fabric/tls/tlscacert.pem"
+  # ccenv setting
+  CORE_CHAINCODE_LOGGING_SHIM: "DEBUG"
+  CORE_CHAINCODE_LOGGING_LEVEL: "DEBUG"
+  CORE_CHAINCODE_BUILDER: "hyperledger/fabric-ccenv:1.4.2"
+  CORE_CHAINCODE_GOLANG_RUNTIME: "hyperledger/fabric-baseos:0.4.15" 
 {{- end }}
 {{- end }}

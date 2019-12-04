@@ -562,13 +562,16 @@ data:
             peers=$(cd $baseDir/peers; ls)
             for peer in ${peers[@]}; do 
                 __setPeerEnv $peer $org
-                INFO "[$peer.$org] is join channel"
+                INFO "[$peer.$org] is installing chaincode[$name:$ver]"
                 peer chaincode install -n $name -v $ver -p $path
             done  
         done  
     }
 
     Fcn_InstantiateChaincode() {
+        if [ $# -lt 7 ]; then 
+            ERROR "invalid args,need at least 7, but $#"
+        fi 
         baseOrg=$1
         targetOrderer=$2
         channelID=$3
@@ -576,11 +579,18 @@ data:
         name=$5
         ver=$6
         args=$7
+        policy=$8
         
         baseDir=$(Fcn_OrgBaseDir $baseOrg)
         peers=$(ls $baseDir/peers)
         peer=$(echo $peers | awk -F' ' '{print $1}')
         __setPeerEnv $peer $baseOrg
-        INFO "peer chaincode instantiate -o $targetOrderer --tls --cafile $caFile -C $channelID -n $name -v $ver -c '$args'"
-        peer chaincode instantiate -o $targetOrderer --tls --cafile $caFile -C $channelID -n $name -v $ver -c '$args'
+        if [ "$policy" != "" ]; then 
+            INFO "peer chaincode instantiate -o $targetOrderer --tls --cafile $caFile -C $channelID -n $name -v $ver -c '$args' -P $policy"
+            peer chaincode instantiate -o $targetOrderer --tls --cafile $caFile -C $channelID -n $name -v $ver -c $args -P $policy
+        else
+            INFO "peer chaincode instantiate -o $targetOrderer --tls --cafile $caFile -C $channelID -n $name -v $ver -c '$args'"
+            peer chaincode instantiate -o $targetOrderer --tls --cafile $caFile -C $channelID -n $name -v $ver -c $args
+        fi 
+        INFO "chaincode[$name:$er] finish instantiated, please check if it is success manually!"
     }

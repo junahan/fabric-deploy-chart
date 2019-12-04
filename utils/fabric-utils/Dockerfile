@@ -1,7 +1,6 @@
 FROM centos:latest
-ADD ./payload/kubectl /usr/bin/kubectl
 
-ADD ./payload/* /usr/bin/
+ADD ./payload/{peer,configtxgen,fabric-ca-client,kubectl} /usr/bin/
 
 RUN mkdir -p /etc/hyperledger/fabric 
 

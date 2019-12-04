@@ -32,12 +32,9 @@ spec:
         - name: script-cmd
           configMap:
             name: {{ include "fabric-deploy-flow.fullname" . }}-script-cmd
-        - name: data-share
-          emptyDir: {}
-        - name: chaincode-store
-          hostPath:
-            path: /root/k8s/script/chaincode
-            type: Directory
+        - name: chaincode-storage
+          persistentVolumeClaim:
+            claimName: {{ include "fabric-deploy-flow.fullname" . }}-chaincode-source-pvc
       containers:
         - name: init-certs
           image: {{ .Values.dependencies.tools.image }}
@@ -63,16 +60,16 @@ spec:
             - name: FABRIC_CFG_PATH
               value: /etc/hyperledger/fabric
             - name: CC_NAME
-              value: {{ .Values.chaincode.name }}
+              value: {{ .Values.chaincode.name | quote }}
             - name: CC_VERSION
-              value: {{ .Values.chaincode.version}}
+              value: {{ .Values.chaincode.version | quote }}
             - name: CC_PATH
-              value: {{ .Values.chaincode.path }}
+              value: {{ .Values.chaincode.path | quote }}
             - name: CC_ARGS
-              value: {{ .Values.chaincode.args }}
+              value: {{ .Values.chaincode.args | quote }}
+            - name: CC_POLICY
+              value: {{ .Values.chaincode.policy | quote }}
           volumeMounts: 
-            - name: configtx
-              mountPath: /config
             - name: script-api
               mountPath: /script/api
             - name: script-utils
@@ -81,6 +78,6 @@ spec:
               mountPath: /script
             - name: kubeconfig
               mountPath: /root/.kube
-            - name: data-share
-              mountPath: /tmp/crypto
+            - name: chaincode-storage
+              mountPath: /opt/gopath/src
 {{- end }}

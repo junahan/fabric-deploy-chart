@@ -14,7 +14,6 @@ fullnameOverride: ""
 service:
   type: ClusterIP
 
-
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
   # choice for the user. This also increases chances charts run on environments with little
@@ -28,7 +27,7 @@ resources: {}
   #   memory: 128Mi
 
 dependencies:
-  kubeConfig: # k8s主机的配置文件，下面只能选择一种
+  kubeConfig: # 下面只能选择一种
     localHost: "/root/.kube"  # 本地映射  
     secret: ""  # secret 存储（建议）
   tools:
@@ -39,7 +38,7 @@ dependencies:
 consortium:
   recreated: true  
   name: sample
-  ordererType: solo # 不支持kafka，只有solo和etcdraft
+  ordererType: solo 
   repo: "hyperledger"
   tag: 1.4.2
   affiliation: "svc.cluster.local" # 固定
@@ -57,25 +56,24 @@ consortium:
       id: Org2MSP
       caserver: http://admin:adminpw@org1-ca-server.default.svc.cluster.local:7054 
       nodes: ["peer0"]
-
-# 通道创建 
+  
 channel:
   enabled: true  
   name: "mychannel"
 
-# 链码安装与启动
+# 链码安装与启动在测试中，暂未开放
 chaincode:
-  enabled: false 
-  channel: ""
-  name: ""
-  version: ""
-  path: ""
-  args: ""
+  enabled: true 
+  channel: "mychannel"
+  name: "mycc"
+  version: "0.1"
+  path: "sample"
+  args: "{\"Args\":[\"init\"]}"
   policy: ""
   sourceFrom: # 链码存储；建议nfs
     enabled: true 
     size: 1Gi
-    storageClass: ""
+    storageClass: "mychaincode"
 
 # 是否启动explorer,暂无
 explorer:
