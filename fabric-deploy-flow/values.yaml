@@ -81,7 +81,8 @@ chaincode:
 explorer:
   enabled: false 
   image: ""
-  ingress: 
+  ingress:
+    enabled: false  
     tls: ""
 
 # 清理

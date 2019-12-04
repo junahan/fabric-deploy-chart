@@ -1,4 +1,4 @@
-{{- if .Values.ingress.enabled -}}
+{{- if .Values.explorer.ingress.enabled -}}
 {{- $fullName := include "fabric-deploy-flow.fullname" . -}}
 apiVersion: extensions/v1beta1
 kind: Ingress

@@ -80,6 +80,7 @@ explorer:
   enabled: false 
   image: ""
   ingress: 
+    enabled: false 
     tls: ""
 
 # 清理
