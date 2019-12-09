@@ -1,11 +1,13 @@
-{{- if .Values.consortium.useAdvanced }}
+{{- if .Values.consortium.useAdvance }}
 {{- if .Values.advanced.couchdb.enabled }}
 {{- range $i, $org := .Values.consortium.peerOrgs }}
 {{- range $j, $node := $org.nodes }}
+---
 apiVersion: apps/v1 
 kind: Deployment 
 metadata:
   name: {{ $node }}-{{ $org.name }}-couchdb
+  namespace: {{ $org.name }}
 spec:
   replicas: 1
   selector:
@@ -19,26 +21,26 @@ spec:
         app.kubernetes.io/instance: {{ $node }}-{{ $org.name }}-couchdb
     spec:
       volumes:
-      {{- if .Values.advanced.persistence.enabled }}
+      {{- if $.Values.advanced.persistence.enabled }}
         - name: data-persistent
           persistentVolumeClaim:
             claimName: couchdb-pvc
       {{- end }}
       containers:
         - name: {{ $node }}-{{ $org.name }}-couchdb
-          image: {{ .Values.couchdb.image }}:{{ .Values.couchdb.tag }}
+          image: {{ $.Values.advanced.couchdb.image }}
           imagePullPolicy: IfNotPresent
           ports:
             - name: grpc
-              containerPort: 5094
+              containerPort: 5984
               protocol: TCP 
           env:
             - name: COUCHDB_USERNAME
-              value: ""
+              value: {{ $.Values.advanced.couchdb.username }}
             - name: COUCHDB_PASSWORD
-              value: "" 
+              value: {{ $.Values.advanced.couchdb.password }} 
+          {{- if $.Values.advanced.persistence.enabled }}
           volumeMounts:
-          {{- if .Values.couchdb.persistence.enabled }}
             - mountPath: /opt/couchdb/data
               name: data-persistent
           {{- end }}

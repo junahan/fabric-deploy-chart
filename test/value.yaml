@@ -42,7 +42,7 @@ consortium:
   repo: "hyperledger"
   tag: 1.4.4
   affiliation: "svc.cluster.local" # 固定
-  useAdvance: false  # 是否开启高级选项配置
+  useAdvance: true  # 是否开启高级选项配置
   ordererOrgs: 
     - name: orderer
       id: OrdererMSP
@@ -64,12 +64,13 @@ consortium:
 # 高级配置
 advanced:
   ccbuilder: 
-    image: hyperledger/fabric-ccenv:1.4.2
+    image: hyperledger/fabric-ccenv:1.4.4
   ccruntime:
     image: hyperledger/fabric-baseos:0.4.15
     loglevel: ""
   couchdb:  # 是否启用couchDB，默认为leveldb，
-    enabled: false   
+    enabled: true
+    image: "hyperledger/fabric-couchdb:latest"
     username: ""
     password: ""
   persistence:
@@ -89,7 +90,7 @@ channel:
 
 # 链码安装与启动在测试中，暂未开放
 chaincode:
-  enabled: true 
+  enabled: true  
   channel: "mychannel"
   name: "mycc"
   version: "0.1"

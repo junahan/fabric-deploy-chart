@@ -1,0 +1,27 @@
+{{- if .Values.consortium.useAdvance }}
+{{- if .Values.advanced.couchdb.enabled }}
+{{- $labels := include "fabric-deploy-flow.labels" . }}
+{{- range $i, $org := .Values.consortium.peerOrgs }}
+{{- range $j, $node := $org.nodes }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $node }}-{{ $org.name }}-couchdb
+  namespace: {{ $org.name }}
+  labels:
+{{ $labels | indent 4 }}
+spec:
+  type: {{ $.Values.service.type }}
+  ports:
+    - port: 5984
+      targetPort: 5984
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ $node }}-{{ $org.name }}-couchdb
+    app.kubernetes.io/instance: {{ $node }}-{{ $org.name }}-couchdb
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
