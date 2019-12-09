@@ -7,11 +7,11 @@ metadata:
   name: {{ $node }}-{{ $ordererOrg.name }}-orderer-env
   namespace: {{ $ordererOrg.name }}
 data:
-  FABRIC_LOGGING_SPEC: "DEBUG"
+  FABRIC_LOGGING_SPEC: {{ $ordererOrg.loglevel | quote }}
   ORDERER_GENERAL_LISTENADDRESS: "0.0.0.0"
   ORDERER_GENERAL_GENESISMETHOD: "file"
   ORDERER_GENERAL_GENESISFILE: "/var/hyperledger/orderer/genesis.block"
-  ORDERER_GENERAL_LOCALMSPID: {{ $ordererOrg.id }}
+  ORDERER_GENERAL_LOCALMSPID: {{ $ordererOrg.id | quote }}
   ORDERER_GENERAL_LOCALMSPDIR: "/var/hyperledger/orderer/msp"
   ORDERER_GENERAL_TLS_ENABLED: "true"
   ORDERER_GENERAL_TLS_PRIVATEKEY: "/var/hyperledger/orderer/tls/pair/tls.key"
@@ -20,8 +20,8 @@ data:
 
   # etcdraft
   {{- if eq $.Values.consortium.ordererType "etcdraft" }} 
-  ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE: "/var/hyperledger/orderer/tls/pair/server.crt"
-  ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY: "/var/hyperledger/orderer/tls/pair/server.key"
+  ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE: "/var/hyperledger/orderer/tls/pair/tls.crt"
+  ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY: "/var/hyperledger/orderer/tls/pair/tls.key"
   ORDERER_GENERAL_CLUSTER_ROOTCAS: "/var/hyperledger/orderer/tls/tlscacert.pem"
   {{- end }}
 {{- end }}

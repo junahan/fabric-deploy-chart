@@ -13,7 +13,7 @@ spec:
     spec:
       containers:
       - name: ca-server
-        image: hyperledger/fabric-ca:1.4.2
+        image: hyperledger/fabric-ca:1.4.4
         imagePullPolicy: IfNotPresent
         command:
           - sh

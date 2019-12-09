@@ -13,7 +13,7 @@ data:
   CORE_PEER_CHAINCODELISTENADDRESS: 0.0.0.0:7052
   CORE_PEER_LOCALMSPID: {{ $peerOrg.id | quote }}
   CORE_VM_ENDPOINT: "unix:///host/var/run/docker.sock"
-  FABRIC_LOGGING_SPEC: "DEBUG"
+  FABRIC_LOGGING_SPEC: {{ $peerOrg.loglevel | quote }}
   CORE_PEER_TLS_ENABLED: "true" 
   # set election way
   CORE_PEER_GOSSIP_USELEADERELECTION: "false" 
@@ -25,9 +25,19 @@ data:
   CORE_PEER_TLS_KEY_FILE: "/etc/hyperledger/fabric/tls/pair/tls.key"
   CORE_PEER_TLS_ROOTCERT_FILE: "/etc/hyperledger/fabric/tls/tlscacert.pem"
   # ccenv setting
+  {{- if $.Values.consortium.useAdvanced }}
   CORE_CHAINCODE_LOGGING_SHIM: "DEBUG"
   CORE_CHAINCODE_LOGGING_LEVEL: "DEBUG"
-  CORE_CHAINCODE_BUILDER: "hyperledger/fabric-ccenv:1.4.2"
-  CORE_CHAINCODE_GOLANG_RUNTIME: "hyperledger/fabric-baseos:0.4.15" 
+  CORE_CHAINCODE_BUILDER: {{ .Values.consortium.advanced.ccbuilder.image }}
+  CORE_CHAINCODE_GOLANG_RUNTIME: {{ .Values.consortium.advanced.ccruntime.image }}
+  {{- end }}
+  {{- if $.Values.consortium.useAdvanced }}
+  {{- if $.Values.advanced.couchdb.enabled }}
+  CORE_LEDGER_STATE_STATEDATABASE: "CouchDB"
+  CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS: {{ $node }}-{{ $peerOrg.name }}-couchdb:5984 
+  CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME: ""
+  CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD: ""
+  {{- end }}
+  {{- end }}
 {{- end }}
 {{- end }}

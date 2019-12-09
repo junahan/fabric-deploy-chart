@@ -39,24 +39,50 @@ dependencies:
 consortium:
   recreated: true  
   name: sample
-  ordererType: solo # 不支持kafka，只有solo和etcdraft
+  ordererType: solo # 只有solo和etcdraft,不支持kafka
   repo: "hyperledger"
   tag: 1.4.2
   affiliation: "svc.cluster.local" # 固定
+  useAdvance: false  # 是否开启高级选项配置
   ordererOrgs: 
     - name: orderer
       id: OrdererMSP
       caserver: http://admin:adminpw@org1-ca-server.default.svc.cluster.local:7054
       nodes: ["orderer"]
+      loglevel: "INFO"
   peerOrgs:
     - name: org1
       id: Org1MSP
       caserver: http://admin:adminpw@org1-ca-server.default.svc.cluster.local:7054 
       nodes: ["peer0","peer1"]
+      loglevel: "INFO"
     - name: org2
       id: Org2MSP
       caserver: http://admin:adminpw@org1-ca-server.default.svc.cluster.local:7054 
       nodes: ["peer0"]
+      loglevel: "INFO"
+
+# 高级配置
+advanced:
+  ccbuilder: 
+    image: hyperledger/fabric-ccenv:1.4.2
+  ccruntime:
+    image: hyperledger/fabric-baseos:0.4.15
+    loglevel: ""
+  couchdb:  # 是否启用couchDB，默认为leveldb，
+    enabled: false   
+    username: ""
+    password: ""
+  persistence:
+    enabled: false 
+    size: 1Gi
+    storageClass: ""
+  explorer: # 是否启动explorer,暂无
+    enabled: false 
+    image: ""
+    ingress:
+      enabled: false  
+      tls: ""
 
 # 通道创建 
 channel:
@@ -77,17 +103,10 @@ chaincode:
     size: 1Gi
     storageClass: ""
 
-# 是否启动explorer,暂无
-explorer:
-  enabled: false 
-  image: ""
-  ingress:
-    enabled: false  
-    tls: ""
-
 # 清理
 cleanup:
-  enabled: true 
+  enabled: true
+  exportCerts: false  # 是否导出证书 
 
 nodeSelector: {}
 

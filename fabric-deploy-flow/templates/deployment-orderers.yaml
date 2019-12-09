@@ -15,13 +15,13 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ $ordererOrg.name }}-{{ $node }}
-      app.kubernetes.io/instance: {{ $ordererOrg.name }}-{{ $node }}
+      app.kubernetes.io/name: {{ $node }}-{{ $ordererOrg.name }}
+      app.kubernetes.io/instance: {{ $node }}-{{ $ordererOrg.name }}
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: {{ $ordererOrg.name }}-{{ $node }}
-        app.kubernetes.io/instance: {{ $ordererOrg.name }}-{{ $node }}
+        app.kubernetes.io/name: {{ $node }}-{{ $ordererOrg.name }}
+        app.kubernetes.io/instance: {{ $node }}-{{ $ordererOrg.name }}
     spec:
     {{- with $.Values.imagePullSecrets }}
       imagePullSecrets:
@@ -51,8 +51,9 @@ spec:
             secretName: {{ $.Values.consortium.name }}-genesis-block
       containers:
         - name: {{ $node }}-{{ $ordererOrg.name }}-entry
-          image: "hyperledger/fabric-orderer:{{ $.Values.consortium.tag }}"
+          image: "{{ $.Values.consortium.repo }}/fabric-orderer:{{ $.Values.consortium.tag }}"
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          # command: ["tail","-f","/dev/null"]
           ports:
             - name: grpc
               containerPort: 7050

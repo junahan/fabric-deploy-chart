@@ -6,154 +6,211 @@ data:
   configtx.yaml: |
     ---
     Organizations:
-    {{- range $i, $ordererOrg := .Values.consortium.ordererOrgs }}
-    - &{{ $ordererOrg.name }}
-      Name: {{ $ordererOrg.id }}
-      ID: {{ $ordererOrg.id }}
-      MSPDir: /tmp/crypto/{{ $ordererOrg.name }}.{{ $.Values.consortium.affiliation }}/msp
+        {{- range $i, $org := .Values.consortium.ordererOrgs }}
+        - &{{ $org.name }}
+            Name: {{ $org.name }}
+            ID: {{ $org.id }}
+            MSPDir: /tmp/crypto/{{ $org.name }}.svc.cluster.local/msp
+            Policies:
+                Readers:
+                    Type: Signature
+                    Rule: "OR('{{ $org.id }}.member')"
+                Writers:
+                    Type: Signature
+                    Rule: "OR('{{ $org.id }}.member')"
+                Admins:
+                    Type: Signature
+                    Rule: "OR('{{ $org.id }}.admin')"
+        {{- end }}
+        {{- range $i, $org := .Values.consortium.peerOrgs }}
+        - &{{ $org.name }}
+            Name: {{ $org.name }}
+            ID: {{ $org.id }}
+            MSPDir: /tmp/crypto/{{ $org.name }}.svc.cluster.local/msp
+            Policies:
+                Readers:
+                    Type: Signature
+                    Rule: "OR('{{ $org.id }}.admin', '{{ $org.id }}.peer', '{{ $org.id }}.client')"
+                Writers:
+                    Type: Signature
+                    Rule: "OR('{{ $org.id }}.admin', '{{ $org.id }}.client')"
+                Admins:
+                    Type: Signature
+                    Rule: "OR('{{ $org.id }}.admin')"
 
-      Policies:
-        Readers:
-          Type: Signature
-          Rule: "OR('{{ $ordererOrg.id }}.member')"
-        Writers:
-          Type: Signature
-          Rule: "OR('{{ $ordererOrg.id }}.member')"
-        Admins:
-          Type: Signature
-          Rule: "OR('{{ $ordererOrg.id }}.admin')"
-    {{- end }}
-    {{- range $i, $peerOrg := .Values.consortium.peerOrgs }}
-    - &{{ $peerOrg.name }}
-      Name: {{ $peerOrg.id }}
-      ID: {{ $peerOrg.id }}
-      MSPDir: /tmp/crypto/{{ $peerOrg.name }}.{{ $.Values.consortium.affiliation }}/msp
-      Policies:
-        Readers:
-          Type: Signature
-          Rule: "OR('{{ $peerOrg.id }}.admin', '{{ $peerOrg.id }}.peer', '{{ $peerOrg.id }}.client')"
-        Writers:
-          Type: Signature
-          Rule: "OR('{{ $peerOrg.id }}.admin', '{{ $peerOrg.id }}.client')"
-        Admins:
-          Type: Signature
-          Rule: "OR('{{ $peerOrg.id }}.admin')"
+            AnchorPeers:
+                - Host: peer0.org1.svc.cluster.local
+                  Port: 7051
+        {{- end }}
 
-      AnchorPeers:
-      - Host: peer0.{{ $peerOrg.name }}.svc.cluster.local
-        Port: 7051
-    {{- end }}
     Capabilities:
-      Channel: &ChannelCapabilities
-        V1_3: true
-      Orderer: &OrdererCapabilities
-        V1_1: true
-      Application: &ApplicationCapabilities
-        V1_3: true
-        # V1.2 for Application enables the new non-backwards compatible
-        # features and fixes of fabric v1.2 (note, this need not be set if
-        # later version capabilities are set)
-        V1_2: false
-        # V1.1 for Application enables the new non-backwards compatible
-        # features and fixes of fabric v1.1 (note, this need not be set if
-        # later version capabilities are set).
-        V1_1: false
+        Channel: &ChannelCapabilities
+            V1_4_2: true
+            V1_3: false
+            V1_1: false
+
+        Orderer: &OrdererCapabilities
+            V1_4_2: true
+            V1_1: false
+
+        Application: &ApplicationCapabilities
+            V1_4_2: true
+            V1_3: false
+            V1_2: false
+            V1_1: false
 
     Application: &ApplicationDefaults
-      Organizations:
-      Policies:
-        Readers:
-          Type: ImplicitMeta
-          Rule: "ANY Readers"
-        Writers:
-          Type: ImplicitMeta
-          Rule: "ANY Writers"
-        Admins:
-          Type: ImplicitMeta
-          Rule: "MAJORITY Admins"
+        Organizations:
 
-      Capabilities:
-        <<: *ApplicationCapabilities
+        Policies:
+            Readers:
+                Type: ImplicitMeta
+                Rule: "ANY Readers"
+            Writers:
+                Type: ImplicitMeta
+                Rule: "ANY Writers"
+            Admins:
+                Type: ImplicitMeta
+                Rule: "MAJORITY Admins"
+
+        Capabilities:
+            <<: *ApplicationCapabilities
 
     Orderer: &OrdererDefaults
-      OrdererType: {{ .Values.consortium.ordererType }}
-      Addresses:
-      {{- range $i, $ordererOrg := .Values.consortium.ordererOrgs }}
-      {{- range $j, $node := $ordererOrg.nodes }}
-      - {{ $node }}.{{ $ordererOrg.name }}.{{ $.Values.consortium.affiliation }}:7050
-      {{- end }}
-      {{- end }}
+        OrdererType: solo
+        Addresses:
+            {{- range $i, $org := .Values.consortium.ordererOrgs }}
+            {{- range $j, $node := $org.nodes }}
+            - {{ $node }}.{{ $org.name }}.svc.cluster.local:7050
+            {{- end }}
+            {{- end }}
 
-      # Batch Timeout: The amount of time to wait before creating a batch
-      BatchTimeout: 2s
-      BatchSize:
-        MaxMessageCount: 10
-        AbsoluteMaxBytes: 99 MB
-        PreferredMaxBytes: 512 KB
+        BatchTimeout: 2s
+        BatchSize:
+            MaxMessageCount: 10
+            AbsoluteMaxBytes: 99 MB
+            PreferredMaxBytes: 512 KB
 
-      Kafka:
-        Brokers:
-        - 127.0.0.1:9092
+        Kafka:
+            Brokers:
+                - 127.0.0.1:9092
 
-      Organizations:
+        EtcdRaft:
+            Consenters:
+            {{- range $i, $org := .Values.consortium.ordererOrgs }}
+            {{- range $j, $node := $org.nodes }}
+                - Host: {{ $node }}.{{ $org.name }}.svc.cluster.local
+                  Port: 7050
+                  ClientTLSCert: /tmp/crypto/{{ $org.name }}.svc.cluster.local/orderers/{{ $node }}/tls/server.crt
+                  ServerTLSCert: /tmp/crypto/{{ $org.name }}.svc.cluster.local/orderers/{{ $node }}/tls/server.crt
+            {{- end }}
+            {{- end }}
+        Organizations:
 
-      Policies:
-        Readers:
-          Type: ImplicitMeta
-          Rule: "ANY Readers"
-        Writers:
-          Type: ImplicitMeta
-          Rule: "ANY Writers"
-        Admins:
-          Type: ImplicitMeta
-          Rule: "MAJORITY Admins"
-        BlockValidation:
-          Type: ImplicitMeta
-          Rule: "ANY Writers"
+        Policies:
+            Readers:
+                Type: ImplicitMeta
+                Rule: "ANY Readers"
+            Writers:
+                Type: ImplicitMeta
+                Rule: "ANY Writers"
+            Admins:
+                Type: ImplicitMeta
+                Rule: "MAJORITY Admins"
+            # BlockValidation specifies what signatures must be included in the block
+            # from the orderer for the peer to validate it.
+            BlockValidation:
+                Type: ImplicitMeta
+                Rule: "ANY Writers"
 
     Channel: &ChannelDefaults
-      Policies:
-        # Who may invoke the 'Deliver' API
-        Readers:
-          Type: ImplicitMeta
-          Rule: "ANY Readers"
-        # Who may invoke the 'Broadcast' API
-        Writers:
-          Type: ImplicitMeta
-          Rule: "ANY Writers"
-        # By default, who may modify elements at this config level
-        Admins:
-          Type: ImplicitMeta
-          Rule: "MAJORITY Admins"
-      Capabilities:
-        <<: *ChannelCapabilities
+        Policies:
+            # Who may invoke the 'Deliver' API
+            Readers:
+                Type: ImplicitMeta
+                Rule: "ANY Readers"
+            # Who may invoke the 'Broadcast' API
+            Writers:
+                Type: ImplicitMeta
+                Rule: "ANY Writers"
+            # By default, who may modify elements at this config level
+            Admins:
+                Type: ImplicitMeta
+                Rule: "MAJORITY Admins"
+
+        Capabilities:
+            <<: *ChannelCapabilities
+
 
     Profiles:
-      OrgsOrdererGenesis:
-        <<: *ChannelDefaults
-        Orderer:
-          <<: *OrdererDefaults
-          Organizations:
-          {{- range $i, $org := .Values.consortium.ordererOrgs }}
-            - *{{ $org.name }}
-          {{- end }}
-          Capabilities:
-            <<: *OrdererCapabilities
-        Consortiums:
-          SampleConsortium:
-            Organizations:
-            {{- range $i, $org := .Values.consortium.peerOrgs }}
-              - *{{ $org.name }}
-            {{- end }}
 
-      OrgsChannel:
-        Consortium: SampleConsortium
-        <<: *ChannelDefaults
-        Application:
-          <<: *ApplicationDefaults
-          Organizations:
-            {{- range $i, $org := .Values.consortium.peerOrgs }}
-            - *{{ $org.name }} 
-            {{- end }}
-          Capabilities:
-            <<: *ApplicationCapabilities
+        OrgsOrdererGenesis:
+            <<: *ChannelDefaults
+            Orderer:
+                <<: *OrdererDefaults
+                Organizations:
+                {{- range $i, $org := .Values.consortium.ordererOrgs }}
+                    - *{{ $org.name }}
+                {{- end }}
+                Capabilities:
+                    <<: *OrdererCapabilities
+            Consortiums:
+                SampleConsortium:
+                    Organizations:
+                    {{- range $i, $org := .Values.consortium.peerOrgs }}
+                        - *{{ $org.name }}
+                    {{- end }}
+        OrgsChannel:
+            Consortium: SampleConsortium
+            <<: *ChannelDefaults
+            Application:
+                <<: *ApplicationDefaults
+                Organizations:
+                {{- range $i, $org := .Values.consortium.peerOrgs }}
+                    - *{{ $org.name }}
+                {{- end }}
+                Capabilities:
+                    <<: *ApplicationCapabilities
+
+
+        SampleMultiNodeEtcdRaft:
+            <<: *ChannelDefaults
+            Capabilities:
+                <<: *ChannelCapabilities
+            Orderer:
+                <<: *OrdererDefaults
+                OrdererType: etcdraft
+                EtcdRaft:
+                    Consenters:
+                    {{- range $i, $org := .Values.consortium.ordererOrgs }}
+                    {{- range $j, $node := $org.nodes }}
+                    - Host: {{ $node }}.{{ $org.name }}.svc.cluster.local
+                      Port: 7050
+                      ClientTLSCert: /tmp/crypto/{{ $org.name }}.svc.cluster.local/orderers/{{ $node }}/tls/server.crt
+                      ServerTLSCert: /tmp/crypto/{{ $org.name }}.svc.cluster.local/orderers/{{ $node }}/tls/server.crt  
+                    {{- end }}
+                    {{- end }}            
+                Addresses:
+                    {{- range $i, $org := .Values.consortium.ordererOrgs }}
+                    {{- range $j, $node := $org.nodes }}
+                    - {{ $node }}.{{ $org.name }}.svc.cluster.local:7050
+                    {{- end }}
+                    {{- end }}
+                Organizations:
+                {{- range $i, $org := .Values.consortium.ordererOrgs }}
+                - *{{ $org.name }}
+                {{- end }}
+                Capabilities:
+                    <<: *OrdererCapabilities
+            Application:
+                <<: *ApplicationDefaults
+                Organizations:
+                {{- range $i, $org := .Values.consortium.ordererOrgs }}
+                - <<: *{{ $org.name }}
+                {{- end }}
+            Consortiums:
+                SampleConsortium:
+                    Organizations:
+                    {{- range $i, $org := .Values.consortium.peerOrgs }}
+                    - *{{ $org.name }}
+                    {{- end }}

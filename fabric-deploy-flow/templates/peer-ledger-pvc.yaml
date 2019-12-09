@@ -1,0 +1,16 @@
+{{- if .Values.consortium.useAdvanced }}
+{{- if .Values.advanced.persistence }}
+# TODO 
+apiVersion: v1 
+kind: PersistentVolumeClaim
+metadata:
+  name: ledger-pvc
+spec:
+  accessModes: 
+    - ReadWriteOnce
+  storageClassName: peer-ledger-db-pvc
+  resources:
+    requests:
+      storage: 1Gi
+{{- end }}
+{{- end }}

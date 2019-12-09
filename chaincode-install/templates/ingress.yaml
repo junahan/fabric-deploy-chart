@@ -1,11 +1,11 @@
-{{- if .Values.explorer.ingress.enabled -}}
-{{- $fullName := include "fabric-deploy-flow.fullname" . -}}
+{{- if .Values.ingress.enabled -}}
+{{- $fullName := include "chaincode-install.fullname" . -}}
 apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
   name: {{ $fullName }}
   labels:
-{{ include "fabric-deploy-flow.labels" . | indent 4 }}
+{{ include "chaincode-install.labels" . | indent 4 }}
   {{- with .Values.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}

@@ -58,7 +58,7 @@ spec:
         {{- end }}
       containers:
         - name: {{ $node }}-{{ $peerOrg.name }}-entry
-          image: "hyperledger/fabric-peer:{{ $.Values.consortium.tag }}"
+          image: "{{ $.Values.consortium.repo }}/fabric-peer:{{ $.Values.consortium.tag }}"
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
           ports:
             - name: grpc

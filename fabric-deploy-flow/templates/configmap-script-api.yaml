@@ -430,14 +430,25 @@ data:
         if [ ! -f "$configPath/configtx.yaml" ]; then 
             ERROR "config.yaml not exist in $configPath"
         fi 
-
-        orgs="$peerOrgs,$ordererOrgs"
-        orgsList=${orgs//,/ }
-        for org in ${orgsList[@]}; do 
-            Fcn_ExportSecret $org  
+        orgs=${peerOrgs//,/ }
+        for org in ${orgs[@]}; do 
+            Fcn_ExportSecret $org 
+        done 
+        orgs=${ordererOrgs//,/ }
+        for org in ${orgs[@]}; do 
+            Fcn_ExportSecret $org true 
         done 
         cd $configPath
-        configtxgen --profile OrgsOrdererGenesis -outputBlock /tmp/genesis.block
+        cat config.yaml
+        if [ "$ORDERER_TYPE" == "etcdraft" ]; then 
+            INFO "create genesis for orderer type[$ORDERER_TYPE]"
+            INFO "configtxgen --profile SampleMultiNodeEtcdRaft -outputBlock /tmp/genesis.block --channelID my-sys-channel"
+            configtxgen --profile SampleMultiNodeEtcdRaft -outputBlock /tmp/genesis.block --channelID my-sys-channel
+        else 
+            INFO "create genesis for orderer type[$ORDERER_TYPE]"
+            INFO "configtxgen --profile OrgsOrdererGenesis -outputBlock /tmp/genesis.block --channelID my-sys-channel"
+            configtxgen --profile OrgsOrdererGenesis -outputBlock /tmp/genesis.block --channelID my-sys-channel
+        fi 
         if [ ! -f "/tmp/genesis.block" ]; then 
             ERROR "create genesis block fail"
         fi
@@ -464,8 +475,7 @@ data:
         Fcn_PrepareCrypto $peerOrgs $ordererOrgs
         channelFile=$channelID.tx
         cd $configPath
-        INFO "configtxgen --profile OrgsChannel -outputCreateChannelTx $G_CryptoBase/$channelFile --channelID $channelID"
-        configtxgen --profile OrgsChannel -outputCreateChannelTx $G_CryptoBase/$channelFile --channelID $channelID
+        configtxgen --profile OrgsChannel -outputCreateChannelTx $G_CryptoBase/$channelFile --channelID $channelID 
         if [ ! -f "$G_CryptoBase/$channelFile" ]; then 
             ERROR "create channel config fail"
         fi 
@@ -535,19 +545,26 @@ data:
     Fcn_WaitForOrdererUp() {
         org=$1
         count=0
+        success=0
         INFO "wait for orderer peer running"
         while true; do 
-            status=`kubectl get pod -n $org | grep $org-orderer | awk '{print $3}'`
-            if [ "$status" == "Running" ]; then 
-                INFO "orderer is running"
-                break 
+            status=$(kubectl get pod -n $org | grep $org-orderer | awk '{print $3}')
+            for s in ${status[@]}; do 
+                if [ "$s" == "Running" ]; then 
+                    success=$(( success+1 ))
+                fi 
+            done  
+            if [ $success -ge 3 ]; then 
+                INFO "all orderer is running"
+                break
             fi 
-            if [ $count -gt 5 ]; then 
-                ERROR "timeout, exit"
+            if [ $count -gt 10 ]; then 
+                ERROR "wait for orderer running fail:timeout, exit"
             fi 
             count=$(( count+1 ))
-            sleep 2
+            sleep 3
         done 
+        INFO "orderers start up"
     }
 
     Fcn_InstallChaincode() {

@@ -25,7 +25,7 @@ spec:
         {{- end }}
       containers:
         - name: "cleanup-job"
-          image: "fabric-utils:1.0.0"
+          image: {{ .Values.dependencies.tools.image }}
           imagePullPolicy: IfNotPresent
           command: 
             - sh 

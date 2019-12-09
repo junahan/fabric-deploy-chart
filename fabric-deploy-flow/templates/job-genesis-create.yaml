@@ -55,6 +55,8 @@ spec:
               value: svc.cluster.local
             - name: FABRIC_CFG_PATH
               value: /config
+            - name: ORDERER_TYPE 
+              value: {{ .Values.consortium.ordererType }}
           volumeMounts: 
             - name: configtx
               mountPath: /config

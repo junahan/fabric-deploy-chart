@@ -1,2 +1,5 @@
-{{- if .Values.explorer.enable }}
+{{- if .Values.consortium.useAdvanced }}
+{{- if .Values.advanced.explorer.enabled }}
+# TODO fabric 区块链浏览器
+{{- end }}
 {{- end }}
